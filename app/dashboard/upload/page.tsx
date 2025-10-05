@@ -9,316 +9,362 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Check, FileImage, Upload, X } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileText, Image as ImageIcon, Link2, Upload, X } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
-interface UploadedFile {
+interface VaultItem {
   id: string;
-  name: string;
-  url: string;
-  size: number;
-  type: string;
-  uploadedAt: Date;
+  type: "note" | "image" | "video" | "link";
+  title: string;
+  text?: string;
+  contentUrl?: string;
+  category: string;
+  tags: string[];
+  createdAt: string;
+  summary: string;
 }
 
 export default function UploadPage() {
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState("note");
   const [dragActive, setDragActive] = useState(false);
+  
+  // Note form
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [noteTags, setNoteTags] = useState("");
+  
+  // Link form
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkDescription, setLinkDescription] = useState("");
+  const [linkTags, setLinkTags] = useState("");
+  
+  // Image upload
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [imageTitle, setImageTitle] = useState("");
+  const [imageTags, setImageTags] = useState("");
 
-  const handleFileUpload = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
-
-    for (const file of fileArray) {
-      if (!file.type.startsWith("image/")) {
-        toast.error(`${file.name} is not an image file`);
-        continue;
-      }
-
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 5MB)`);
-        continue;
-      }
-
-      setUploading(true);
-      setUploadProgress(0);
-
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        // Simulate progress
-        const progressInterval = setInterval(() => {
-          setUploadProgress((prev) => {
-            if (prev >= 90) {
-              clearInterval(progressInterval);
-              return prev;
-            }
-            return prev + Math.random() * 20;
-          });
-        }, 200);
-
-        const response = await fetch("/api/upload-image", {
-          method: "POST",
-          body: formData,
-        });
-
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-
-        if (!response.ok) {
-          throw new Error("Upload failed");
-        }
-
-        const { url } = await response.json();
-
-        const uploadedFile: UploadedFile = {
-          id: crypto.randomUUID(),
-          name: file.name,
-          url,
-          size: file.size,
-          type: file.type,
-          uploadedAt: new Date(),
-        };
-
-        setUploadedFiles((prev) => [uploadedFile, ...prev]);
-        toast.success(`${file.name} uploaded successfully`);
-      } catch (error) {
-        console.error("Upload error:", error);
-        toast.error(`Failed to upload ${file.name}`);
-      } finally {
-        setUploading(false);
-        setUploadProgress(0);
-      }
+  const saveToVault = (item: VaultItem) => {
+    try {
+      const existingItems = localStorage.getItem("vaultItems");
+      const items: VaultItem[] = existingItems ? JSON.parse(existingItems) : [];
+      items.unshift(item); // Add to beginning
+      localStorage.setItem("vaultItems", JSON.stringify(items));
+      return true;
+    } catch (error) {
+      console.error("Error saving to vault:", error);
+      return false;
     }
   };
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
+  const handleNoteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
+    
+    if (!noteTitle.trim() || !noteContent.trim()) {
+      toast.error("Please fill in title and content");
+      return;
     }
-  }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+    const newNote: VaultItem = {
+      id: crypto.randomUUID(),
+      type: "note",
+      title: noteTitle,
+      text: noteContent,
+      category: "Notes",
+      tags: noteTags.split(",").map(t => t.trim()).filter(t => t),
+      createdAt: new Date().toISOString(),
+      summary: noteContent.substring(0, 100),
+    };
+
+    if (saveToVault(newNote)) {
+      toast.success("Note added to vault!");
+      setNoteTitle("");
+      setNoteContent("");
+      setNoteTags("");
+      setTimeout(() => router.push("/dashboard"), 500);
+    } else {
+      toast.error("Failed to save note");
+    }
+  };
+
+  const handleLinkSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files);
+    
+    if (!linkTitle.trim() || !linkUrl.trim()) {
+      toast.error("Please fill in title and URL");
+      return;
     }
-  }, []);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files);
+    const newLink: VaultItem = {
+      id: crypto.randomUUID(),
+      type: "link",
+      title: linkTitle,
+      text: linkDescription,
+      contentUrl: linkUrl,
+      category: "Links",
+      tags: linkTags.split(",").map(t => t.trim()).filter(t => t),
+      createdAt: new Date().toISOString(),
+      summary: linkDescription || linkUrl,
+    };
+
+    if (saveToVault(newLink)) {
+      toast.success("Link added to vault!");
+      setLinkTitle("");
+      setLinkUrl("");
+      setLinkDescription("");
+      setLinkTags("");
+      setTimeout(() => router.push("/dashboard"), 500);
+    } else {
+      toast.error("Failed to save link");
     }
   };
 
-  const removeFile = (id: string) => {
-    setUploadedFiles((prev) => prev.filter((file) => file.id !== id));
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("Image is too large (max 10MB)");
+        return;
+      }
+      setSelectedImage(file);
+      const preview = URL.createObjectURL(file);
+      setImagePreview(preview);
+    }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  const handleImageSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedImage || !imageTitle.trim()) {
+      toast.error("Please select an image and add a title");
+      return;
+    }
+
+    const newImage: VaultItem = {
+      id: crypto.randomUUID(),
+      type: "image",
+      title: imageTitle,
+      contentUrl: imagePreview,
+      category: "Media",
+      tags: imageTags.split(",").map(t => t.trim()).filter(t => t),
+      createdAt: new Date().toISOString(),
+      summary: `Image: ${imageTitle}`,
+    };
+
+    if (saveToVault(newImage)) {
+      toast.success("Image added to vault!");
+      setSelectedImage(null);
+      setImagePreview("");
+      setImageTitle("");
+      setImageTags("");
+      setTimeout(() => router.push("/dashboard"), 500);
+    } else {
+      toast.error("Failed to save image");
+    }
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Add to Your Vault</h1>
-        <p className="text-muted-foreground mt-2">
-          Upload images, screenshots, and media. AI will automatically organize and classify your content.
+        <p className="text-slate-600 dark:text-slate-400 mt-2">
+          Create notes, save links, or upload images to your vault
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Upload Area */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5 text-cyan-500" />
-              Upload to Vault
-            </CardTitle>
-            <CardDescription>
-              Add images and media to your vault. Maximum file size is 5MB per file.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div
-              className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                dragActive
-                  ? "border-cyan-500 bg-cyan-500/5"
-                  : "border-muted-foreground/25 hover:border-cyan-500/50"
-              }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <Input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleInputChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={uploading}
-              />
-              <div className="space-y-2">
-                <FileImage className="h-10 w-10 mx-auto text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">
-                    {dragActive
-                      ? "Drop files here"
-                      : "Click to upload or drag and drop"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    PNG, JPG, GIF up to 5MB
-                  </p>
-                </div>
-              </div>
-            </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="note" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Note
+          </TabsTrigger>
+          <TabsTrigger value="image" className="flex items-center gap-2">
+            <ImageIcon className="w-4 h-4" />
+            Image
+          </TabsTrigger>
+          <TabsTrigger value="link" className="flex items-center gap-2">
+            <Link2 className="w-4 h-4" />
+            Link
+          </TabsTrigger>
+        </TabsList>
 
-            {uploading && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Uploading...</span>
-                  <span>{Math.round(uploadProgress)}%</span>
+        {/* Note Tab */}
+        <TabsContent value="note">
+          <Card>
+            <CardHeader>
+              <CardTitle>Create a Note</CardTitle>
+              <CardDescription>
+                Write down your thoughts, ideas, or important information
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleNoteSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="note-title">Title</Label>
+                  <Input
+                    id="note-title"
+                    placeholder="Enter note title..."
+                    value={noteTitle}
+                    onChange={(e) => setNoteTitle(e.target.value)}
+                    required
+                  />
                 </div>
-                <Progress value={uploadProgress} className="h-2" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="note-content">Content</Label>
+                  <Textarea
+                    id="note-content"
+                    placeholder="Write your note here..."
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    rows={8}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="note-tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="note-tags"
+                    placeholder="work, personal, ideas..."
+                    value={noteTags}
+                    onChange={(e) => setNoteTags(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="w-full">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Save Note
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Upload Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>About R2 Storage</CardTitle>
-            <CardDescription>
-              Cloudflare R2 provides S3-compatible object storage
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium">Global CDN</p>
-                  <p className="text-muted-foreground">
-                    Fast delivery worldwide
-                  </p>
+        {/* Image Tab */}
+        <TabsContent value="image">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload an Image</CardTitle>
+              <CardDescription>
+                Add photos, screenshots, or any visual content
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleImageSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="image-file">Select Image</Label>
+                  <Input
+                    id="image-file"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    required
+                  />
                 </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium">Zero Egress Fees</p>
-                  <p className="text-muted-foreground">No bandwidth charges</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium">S3 Compatible</p>
-                  <p className="text-muted-foreground">
-                    Works with existing tools
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium">Auto Scaling</p>
-                  <p className="text-muted-foreground">Handles any file size</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Uploaded Files */}
-      {uploadedFiles.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Uploaded Files ({uploadedFiles.length})</CardTitle>
-            <CardDescription>
-              Recently uploaded images to R2 storage
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {uploadedFiles.map((file) => (
-                <div
-                  key={file.id}
-                  className="group relative border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
-                >
-                  <div className="aspect-video relative bg-muted">
+                {imagePreview && (
+                  <div className="relative w-full h-48 bg-slate-100 dark:bg-neutral-800 rounded-lg overflow-hidden">
                     <Image
-                      src={file.url}
-                      alt={file.name}
+                      src={imagePreview}
+                      alt="Preview"
                       fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      className="object-contain"
                     />
                   </div>
-                  <div className="p-3">
-                    <p
-                      className="font-medium text-sm truncate"
-                      title={file.name}
-                    >
-                      {file.name}
-                    </p>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                      <span>{formatFileSize(file.size)}</span>
-                      <span>{file.uploadedAt.toLocaleDateString()}</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigator.clipboard.writeText(file.url)}
-                        className="flex-1 text-xs"
-                      >
-                        Copy URL
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(file.url, "_blank")}
-                        className="flex-1 text-xs"
-                      >
-                        Open
-                      </Button>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeFile(file.id)}
-                    className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-background"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="image-title">Title</Label>
+                  <Input
+                    id="image-title"
+                    placeholder="Enter image title..."
+                    value={imageTitle}
+                    onChange={(e) => setImageTitle(e.target.value)}
+                    required
+                  />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                <div className="space-y-2">
+                  <Label htmlFor="image-tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="image-tags"
+                    placeholder="design, screenshot, photo..."
+                    value={imageTags}
+                    onChange={(e) => setImageTags(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={!selectedImage}>
+                  <ImageIcon className="w-4 h-4 mr-2" />
+                  Save Image
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Link Tab */}
+        <TabsContent value="link">
+          <Card>
+            <CardHeader>
+              <CardTitle>Save a Link</CardTitle>
+              <CardDescription>
+                Bookmark articles, resources, or any web content
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleLinkSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="link-title">Title</Label>
+                  <Input
+                    id="link-title"
+                    placeholder="Enter link title..."
+                    value={linkTitle}
+                    onChange={(e) => setLinkTitle(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="link-url">URL</Label>
+                  <Input
+                    id="link-url"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="link-description">Description (optional)</Label>
+                  <Textarea
+                    id="link-description"
+                    placeholder="Add a brief description..."
+                    value={linkDescription}
+                    onChange={(e) => setLinkDescription(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="link-tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="link-tags"
+                    placeholder="article, research, tutorial..."
+                    value={linkTags}
+                    onChange={(e) => setLinkTags(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="w-full">
+                  <Link2 className="w-4 h-4 mr-2" />
+                  Save Link
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
