@@ -6,10 +6,117 @@ import { cn } from "@/lib/utils";
 import { useChat } from "@ai-sdk/react";
 import { Bot, Send } from "lucide-react";
 import Markdown from "react-markdown";
+import { useEffect, useState } from "react";
+
+// Dummy data (same as dashboard)
+const dummyVaultItems = [
+  {
+    id: "1",
+    type: "note",
+    title: "Project Ideas for Q4",
+    text: "Brainstorming session notes: 1) Launch AI Twin feature, 2) Improve vault search, 3) Add voice notes support",
+    category: "Notes",
+    tags: ["work", "planning", "ideas"],
+    createdAt: "2025-10-01T10:30:00Z",
+    summary: "Quarterly project planning and feature ideas"
+  },
+  {
+    id: "2",
+    type: "image",
+    title: "Team Meeting Whiteboard",
+    contentUrl: "/placeholder-image.jpg",
+    category: "Media",
+    tags: ["meeting", "team", "whiteboard"],
+    createdAt: "2025-10-02T14:20:00Z",
+    summary: "Whiteboard snapshot from team brainstorming"
+  },
+  {
+    id: "3",
+    type: "note",
+    title: "Grocery List",
+    text: "Milk, eggs, bread, coffee, fruits, vegetables",
+    category: "Tasks",
+    tags: ["personal", "shopping"],
+    createdAt: "2025-10-03T08:15:00Z",
+    summary: "Weekly grocery shopping list"
+  },
+  {
+    id: "4",
+    type: "video",
+    title: "Product Demo Recording",
+    contentUrl: "/placeholder-video.mp4",
+    category: "Media",
+    tags: ["demo", "product", "presentation"],
+    createdAt: "2025-10-03T16:45:00Z",
+    summary: "Demo video for investor presentation"
+  },
+  {
+    id: "5",
+    type: "link",
+    title: "AI Research Paper",
+    contentUrl: "https://arxiv.org/example",
+    text: "Interesting paper on RAG improvements",
+    category: "Links",
+    tags: ["research", "ai", "learning"],
+    createdAt: "2025-10-04T11:00:00Z",
+    summary: "Research paper on retrieval-augmented generation"
+  },
+  {
+    id: "6",
+    type: "note",
+    title: "Meeting Notes - Client Call",
+    text: "Discussed project timeline, budget constraints, and deliverables. Client wants MVP by end of month.",
+    category: "Notes",
+    tags: ["meeting", "client", "work"],
+    createdAt: "2025-10-04T15:30:00Z",
+    summary: "Client meeting discussion points"
+  },
+  {
+    id: "7",
+    type: "image",
+    title: "Design Mockup v2",
+    contentUrl: "/placeholder-design.jpg",
+    category: "Media",
+    tags: ["design", "ui", "mockup"],
+    createdAt: "2025-10-05T09:20:00Z",
+    summary: "Updated design mockup for dashboard"
+  },
+  {
+    id: "8",
+    type: "note",
+    title: "Book Recommendations",
+    text: "1. Atomic Habits, 2. Deep Work, 3. The Lean Startup",
+    category: "Notes",
+    tags: ["books", "learning", "personal"],
+    createdAt: "2025-10-05T10:45:00Z",
+    summary: "Reading list for personal development"
+  }
+];
 
 export default function Chat() {
+  const [vaultData, setVaultData] = useState<typeof dummyVaultItems>([]);
+
+  // Load vault data on mount
+  useEffect(() => {
+    const loadVaultData = () => {
+      try {
+        const stored = localStorage.getItem("vaultItems");
+        const userItems = stored ? JSON.parse(stored) : [];
+        // Combine user items with dummy data
+        setVaultData([...userItems, ...dummyVaultItems]);
+      } catch (error) {
+        console.error("Error loading vault data:", error);
+        setVaultData(dummyVaultItems);
+      }
+    };
+    loadVaultData();
+  }, []);
+
   const { messages, input, handleInputChange, handleSubmit } = useChat({
     maxSteps: 10,
+    body: {
+      vaultData, // Send vault data with each request
+    },
   });
 
   return (
